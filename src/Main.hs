@@ -1,117 +1,117 @@
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
-module Language.CSharp.Arbitrary () where
+import Prelude hiding (not)
 
-import Control.Applicative
-import Data.DeriveTH
-import Data.List (intersperse, nub)
-import Text.PrettyPrint
-import Test.QuickCheck
+import Data.Monoid
+import Test.QuickCheck hiding (oneof)
+import System.IO.Unsafe (unsafePerformIO)
+import Text.Regex.PCRE hiding (Regex)
 
-------------------------------------------------------------
--- Regex Types
-
-data Regex = Regex [[BasicExpr]]
-    deriving (Show, Eq)
-
-data BasicExpr = Expr Expr | Many Expr | Many1 Expr
-    deriving (Show, Eq)
-
-data Expr
-    = Any
-    | Start
-    | End
-    | Char Char
-    | Set [Item]
-    | NSet [Item]
-    | Group Regex
-    deriving (Show, Eq)
-
-data Item = Item Char | Range Char Char
-    deriving (Show, Eq)
-
-------------------------------------------------------------
--- Regex Arbitrary
-
-instance Arbitrary Regex where
-    arbitrary = Regex <$> listOf1 (listOf1 arbitrary)
-
-instance Arbitrary BasicExpr where
-    arbitrary = oneof
-        [ Expr  <$> arbitrary
-        , Many  <$> arbitrary
-        , Many1 <$> arbitrary ]
-
-instance Arbitrary Expr where
-    arbitrary = oneof
-        [ pure Any
-        , pure Start
-        , pure End
-        , Char  <$> ascii
-        , Set   <$> uniques1 arbitrary
-        , NSet  <$> uniques1 arbitrary
-        , Group <$> arbitrary ]
-
-instance Arbitrary Item where
-    arbitrary = oneof
-        [ Item  <$> ascii
-        , Range <$> ascii <*> ascii ]
-
-ascii :: Gen Char
-ascii = choose ('!', '~')
-
-uniques1 :: Eq a => Gen a -> Gen [a]
-uniques1 g = nub <$> listOf1 g
-
-------------------------------------------------------------
--- Regex Pretty Printing
-
-instance Pretty Regex where
-    pretty (Regex xs) = hcat $ intersperse (char '|') $ map hcat' xs
-
-instance Pretty BasicExpr where
-    pretty (Expr x)  = pretty x
-    pretty (Many x)  = pretty x <> char '*'
-    pretty (Many1 x) = pretty x <> char '+'
-
-instance Pretty Expr where
-    pretty Any       = char '.'
-    pretty Start     = char '^'
-    pretty End       = char '$'
-    pretty (Char c)  = char c
-    pretty (Set xs)  = brackets (hcat' xs)
-    pretty (NSet xs) = brackets (char '^' <> hcat' xs)
-    pretty (Group g) = parens (pretty g)
-
-instance Pretty Item where
-    pretty (Item c)    = escape c
-    pretty (Range x y) = escape x <> char '-' <> escape y
-
-escape :: Char -> Doc
-escape c | meta c    = char '\\' <> char c
-         | otherwise = char c
-  where
-    meta = (`elem` "\\|*+.[$()")
-
-class Pretty a where
-    pretty :: a -> Doc
-
-renderP :: Pretty a => a -> String
-renderP = render . pretty
-
-hcat' :: Pretty a => [a] -> Doc
-hcat' = hcat . map pretty
+import Types
+import Pretty
 
 ------------------------------------------------------------
 -- Regex DSL
 
+instance Monoid Regex where
+    mempty = Regex []
+
+    mappend x (Regex []) = x
+    mappend (Regex []) x = x
+    mappend (Regex [x]) (Regex [y]) = Regex [x++y]
+    mappend x y = group x `mappend` group y
+
+group :: Regex -> Regex
+group = expr . Group
+
+capture :: Regex -> Regex
+capture = expr . Capture
+
+char :: Char -> Regex
+char = expr . Char
+
+oneof :: [Char] -> Regex
+oneof = expr . Set . map Item
+
+not :: Regex -> Regex
+-- Char -> NSet
+not (Regex [[Many0 (Char c)]])    = Regex [[Many0 $ NSet [Item c]]]
+not (Regex [[Many1 (Char c)]])    = Regex [[Many1 $ NSet [Item c]]]
+not (Regex [[Expr m n (Char c)]]) = Regex [[Expr m n $ NSet [Item c]]]
+-- Set -> NSet
+not (Regex [[Many0 (Set xs)]])    = Regex [[Many0 $ NSet xs]]
+not (Regex [[Many1 (Set xs)]])    = Regex [[Many1 $ NSet xs]]
+not (Regex [[Expr m n (Set xs)]]) = Regex [[Expr m n $ NSet xs]]
+-- NSet -> Set
+not (Regex [[Many0 (NSet xs)]])    = Regex [[Many0 $ Set xs]]
+not (Regex [[Many1 (NSet xs)]])    = Regex [[Many1 $ Set xs]]
+not (Regex [[Expr m n (NSet xs)]]) = Regex [[Expr m n $ Set xs]]
+-- everything else
+not x = expr (NegAhead x)
+
+expr :: Expr -> Regex
+expr x = Regex [[Expr 1 1 x]]
+
+many1 :: Regex -> Regex
+many1 (Regex [[Expr 1 1 x]]) = Regex [[Many1 x]]
+many1 x                      = many1 (group x)
+
+optional :: Regex -> Regex
+optional (Regex [[Expr 1 1 x]]) = Regex [[Expr 0 1 x]]
+optional x                      = optional (group x)
+
+whitespace :: Regex
+whitespace = oneof " \t\r\n"
+
+test = mconcat
+    [ char '<'
+    , capture $ many1 $ not $ oneof " />"
+    , optional whitespace
+    , optional $ capture $ many1 $ not $ char '>'
+    ]
+
 ------------------------------------------------------------
 -- Main
 
---putStrLn (renderP $ NegativeSet [Item '*', Range 'a' 'z'])
---putStrLn (renderP $ Regex [[Expr Any],[Expr $ Set $ PositiveSet [Item 'A']]])
-
 main :: IO ()
 main = do
-    xs <- sample' $ resize 3 (arbitrary :: Gen Regex)
-    mapM_ (putStrLn . renderP) (take 3 $ xs)
+    putStrLn "HTML Regex\n"
+    putStrLn $ pattern ++ "\n" ++ body ++ "\n"
+
+    mapM_ print matches
+  where
+    matches :: [[String]]
+    matches = body =~ pattern
+
+    body = "<html class=yeh><head style='no'><h1 onclick=\"ok\">x</h1></head></html>"
+    pattern = renderP test
+
+    --putStrLn "Random Regex"
+    --xs <- sample' $ resize 4 (arbitrary :: Gen Regex)
+    --mapM_ (putStrLn . renderP) (take 3 $ xs)
+
+    --putStrLn "\nQuickCheck"
+    --result <- quickCheckWithResult args prop_check
+    --putStrLn $ "replay = read \"Just ("
+    --        ++ show (usedSeed result) ++ ", "
+    --        ++ show (usedSize result) ++ ")\""
+  --where
+  --  args = stdArgs
+  --       { maxSuccess = 1000000
+  --       , maxSize = 4
+  --       , chatty = False
+  --       --, replay = read "Just (969080827 2147483396, 2)"
+  --       }
+
+prop_check (regex :: BasicExpr) =
+    if text =~ pattern /= result
+    then True
+    else unsafePerformIO $ do
+        putStrLn (text ++ " => " ++ result)
+        putStrLn output
+        return False
+  where
+    result  = "a3"
+    text    = "abc12a3aaacc"
+    pattern = renderP regex
+    output  = pattern ++ "\n" ++ show regex
