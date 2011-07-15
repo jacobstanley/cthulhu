@@ -34,9 +34,11 @@ instance Pretty Item where
     pretty (Range x y) = escape x <> char '-' <> escape y
 
 escape :: Char -> Doc
-escape '\t'          = char '\\' <> char 't'
-escape '\r'          = char '\\' <> char 'r'
-escape '\n'          = char '\\' <> char 'n'
+escape '\t'          = text "\\t"
+escape '\r'          = text "\\r"
+escape '\n'          = text "\\n"
+escape '\f'          = text "\\f"
+escape '\xa0'        = text "\\xa0"
 escape c | meta c    = char '\\' <> char c
          | otherwise = char c
   where
