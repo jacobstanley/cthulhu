@@ -1,34 +1,60 @@
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE StandaloneDeriving #-}
+
 module Types where
 
+import Data.Monoid hiding (Any)
 import Data.List (foldl')
 
 ------------------------------------------------------------
 -- Regex Types
 
-data Regex
+type Regex = RegexM ()
+
+data RegexM a
     = Empty
     | Start
     | End
     | Expr Expr
     | Many Expr
     | Many1 Expr
+    | Fewest Expr
+    | Fewest1 Expr
     | Optional Expr
-    | Join Regex Regex
-    | Choice Regex Regex
-    deriving (Show, Eq)
+    | forall b c. Join (RegexM b) (RegexM c)
+    | forall b c. Choice (RegexM b) (RegexM c)
 
 data Expr
     = Any
     | Char Char
     | OneOf [Item]
     | NoneOf [Item]
-    | Capture Regex
-    | NegAhead Regex
     | SubExpr Regex
-    deriving (Show, Eq)
+    | Capture Regex
+    | Named String Regex
+    | LookAhead Regex
+    | NegLookAhead Regex
+    | Backref Int
 
 data Item = Item Char | Range Char Char
-    deriving (Show, Eq)
+
+deriving instance Show (RegexM a)
+deriving instance Show Expr
+deriving instance Show Item
+
+------------------------------------------------------------
+-- Regex DSL - Type Classes
+
+instance Monoid Regex where
+    mempty  = Empty
+    mappend = (<>)
+    mconcat = join
+
+instance Monad RegexM where
+    return _ = Empty
+    (>>)     = (<>)
+    ma >>= f = ma >> f (error "Regex.Types.(>>=): _|_")
 
 ------------------------------------------------------------
 -- Regex DSL - Primitives
@@ -39,21 +65,22 @@ regex = Expr
 expr :: Regex -> Expr
 expr = SubExpr
 
-infixr 0 <+>
+infixr 0 <>
 infixr 1 <|>
+
+(<>) :: RegexM a -> RegexM b -> RegexM c
+(<>) = Join
+
+join :: [Regex] -> Regex
+join = foldl' (<>) Empty
 
 (<|>) :: Regex -> Regex -> Regex
 (<|>) (Expr (OneOf xs)) (Expr (OneOf ys)) = Expr $ OneOf $ xs ++ ys
 (<|>) x y = Choice x y
 
 choice :: [Regex] -> Regex
-choice = foldl' (<|>) Empty
-
-(<+>) :: Regex -> Regex -> Regex
-(<+>) x y = Join x y
-
-join :: [Regex] -> Regex
-join = foldl' (<+>) Empty
+choice [] = error "choice: cannot do choice on empty list"
+choice xs = foldl1 (<|>) xs
 
 many :: Regex -> Regex
 many (Expr x) = Many x
@@ -62,6 +89,14 @@ many x        = Many (expr x)
 many1 :: Regex -> Regex
 many1 (Expr x) = Many1 x
 many1 x        = Many1 (expr x)
+
+fewest :: Regex -> Regex
+fewest (Expr x) = Fewest x
+fewest x        = Fewest (expr x)
+
+fewest1 :: Regex -> Regex
+fewest1 (Expr x) = Fewest1 x
+fewest1 x        = Fewest1 (expr x)
 
 optional :: Regex -> Regex
 optional (Expr x) = Optional x
@@ -85,8 +120,17 @@ noneOf = regex . NoneOf . map Item
 capture :: Regex -> Regex
 capture = regex . Capture
 
-notFollowedBy :: Regex -> Regex -> Regex
-notFollowedBy = regex . NegAhead
+named :: String -> Regex -> Regex
+named name r = regex (Named name r)
+
+followedBy :: Regex -> Regex
+followedBy = regex . LookAhead
+
+notFollowedBy :: Regex -> Regex
+notFollowedBy = regex . NegLookAhead
+
+backref :: Int -> Regex
+backref = regex . Backref
 
 ------------------------------------------------------------
 -- Regex DSL - Characters
@@ -95,7 +139,10 @@ spaces :: Regex
 spaces = many space
 
 space :: Regex
-space = oneOf " \t\r\n\f\v\xa0"
+space = oneOf " \t\r\n\f\xa0"
+
+alphaNum :: Regex
+alphaNum = letter <|> digit
 
 letter :: Regex
 letter = range 'a' 'z' <|> range 'A' 'Z'
@@ -116,23 +163,34 @@ string = join . map char
 -- Regex DSL - Combinators
 
 between :: Regex -> Regex -> Regex -> Regex
-between open close x = open <+> x <+> close
+between open close x = open <> x <> close
 
-------------------------------------------------------------
--- Regex DSL
+angles :: Regex -> Regex
+angles = between (char '<') (char '>')
 
-not :: Regex -> Regex
--- Char -> NoneOf
-not (Many (Char c))  = Many $ NoneOf [Item c]
-not (Many1 (Char c)) = Many1 $ NoneOf [Item c]
-not (Expr (Char c))  = Expr $ NoneOf [Item c]
--- OneOf -> NoneOf
-not (Many (OneOf xs))  = Many $ NoneOf xs
-not (Many1 (OneOf xs)) = Many1 $ NoneOf xs
-not (Expr (OneOf xs))  = Expr $ NoneOf xs
--- NoneOf -> OneOf
-not (Many (NoneOf xs))  = Many $ OneOf xs
-not (Many1 (NoneOf xs)) = Many1 $ OneOf xs
-not (Expr (NoneOf xs))  = Expr $ OneOf xs
--- everything else
-not x = regex (NegAhead x)
+parens :: Regex -> Regex
+parens = between (char '(') (char ')')
+
+braces :: Regex -> Regex
+braces = between (char '{') (char '}')
+
+brackets :: Regex -> Regex
+brackets = between (char '[') (char ']')
+
+lexeme :: Regex -> Regex
+lexeme = (<> spaces)
+
+manyTill :: Regex -> Regex -> Regex
+manyTill r end = fewest r <> followedBy end
+
+captureBetween :: Regex -> Regex -> Regex
+captureBetween open close = open <> capture (manyTill anyChar close) <> close
+
+captureQuoted :: Regex -> Regex
+captureQuoted quote = captureBetween quote quote
+
+captureSingles :: Regex
+captureSingles = captureQuoted (char '\'')
+
+captureDoubles :: Regex
+captureDoubles = captureQuoted (char '\"')

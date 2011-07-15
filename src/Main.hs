@@ -7,15 +7,33 @@ import Test.QuickCheck hiding (oneof)
 import System.IO.Unsafe (unsafePerformIO)
 import Text.Regex.PCRE hiding (Regex)
 
---import Types
---import Pretty
---
---test = mconcat
+import Types
+import Pretty
+
+--test = join
 --    [ char '<'
---    , capture $ many1 $ noneof " />"
---    , many0 whitespace
---    , optional $ capture $ many1 $ noneof "="
+--    , capture $ many1 $ noneOf " />"
+--    , spaces
+--    , optional $ capture $ many1 $ noneOf "="
 --    ]
+
+test = openTag <|> closeTag <|> content
+
+openTag = angles $ do
+        name "open"
+        capture (many attribute)
+        optional (char '/')
+
+closeTag = angles $ char '/' >> name "close"
+
+attribute = lexeme $ do
+              name "attr"
+              char '='
+              captureSingles <|> captureDoubles
+
+content = named "content" (many $ noneOf "<>")
+
+name n = lexeme $ named n (letter >> many alphaNum)
 
 ------------------------------------------------------------
 -- Main
@@ -30,9 +48,8 @@ main = do
     matches :: [[String]]
     matches = body =~ pattern
 
-    body = "<html><head style='no'><h1 onclick=\"ok\">x</h1></head></html>"
-    pattern = "(html)"
-    --pattern = renderP test
+    body = "<html style='no'><head><h1 class='fred' onclick=\"ok\">x</h1></head></html>"
+    pattern = render test
 
 {-
     --putStrLn "Random Regex"
