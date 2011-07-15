@@ -1,6 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
-import Prelude hiding (not)
+import Prelude hiding (not, id)
 
 import Data.Monoid
 import Test.QuickCheck hiding (oneof)
@@ -10,30 +10,33 @@ import Text.Regex.PCRE hiding (Regex)
 import Types
 import Pretty
 
---test = join
---    [ char '<'
---    , capture $ many1 $ noneOf " />"
---    , spaces
---    , optional $ capture $ many1 $ noneOf "="
---    ]
+test = stackoverflow
 
-test = openTag <|> closeTag <|> content
+
+stackoverflow = angles (name >> many attr)
+  where
+    name = lexeme $ letter >> many alphaNum
+    attr = lexeme $ name >> optional (char '=' >> (doubleQuoted <|> singleQuoted))
+
+
+
+html = openTag <|> closeTag <|> content
 
 openTag = angles $ do
-        name "open"
-        capture (many attribute)
+        tagName "open"
+        many attribute
         optional (char '/')
 
-closeTag = angles $ char '/' >> name "close"
+closeTag = angles $ char '/' >> tagName "close"
 
 attribute = lexeme $ do
-              name "attr"
+              tagName "attr"
               char '='
               captureSingles <|> captureDoubles
 
 content = named "content" (many $ noneOf "<>")
 
-name n = lexeme $ named n (letter >> many alphaNum)
+tagName n = lexeme $ named n (letter >> many alphaNum)
 
 ------------------------------------------------------------
 -- Main
@@ -48,7 +51,8 @@ main = do
     matches :: [[String]]
     matches = body =~ pattern
 
-    body = "<html style='no'><head><h1 class='fred' onclick=\"ok\">x</h1></head></html>"
+    --body = "<html style='no'><head><h1 class='fred' onclick=\"ok\">x</h1></head></html>"
+    body = "<p> <a href=\"foo\"> <br /> <hr class=\"foo\"/> <div style=\"background:url('/path/image/.jpg');\" title='Yes/No'>  <input value=\"is 5 > 3?\" />  <input disabled></input>"
     pattern = render test
 
 {-

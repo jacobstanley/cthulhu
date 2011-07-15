@@ -183,14 +183,14 @@ lexeme = (<> spaces)
 manyTill :: Regex -> Regex -> Regex
 manyTill r end = fewest r <> followedBy end
 
-captureBetween :: Regex -> Regex -> Regex
-captureBetween open close = open <> capture (manyTill anyChar close) <> close
+singleQuoted :: Regex
+singleQuoted = char '\'' <> many (noneOf "\'") <> char '\''
 
-captureQuoted :: Regex -> Regex
-captureQuoted quote = captureBetween quote quote
+doubleQuoted :: Regex
+doubleQuoted = char '\"' <> many (noneOf "\"") <> char '\"'
 
 captureSingles :: Regex
-captureSingles = captureQuoted (char '\'')
+captureSingles = char '\'' <> capture (many $ noneOf "\'") <> char '\''
 
 captureDoubles :: Regex
-captureDoubles = captureQuoted (char '\"')
+captureDoubles = char '\"' <> capture (many $ noneOf "\"") <> char '\"'
