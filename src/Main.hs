@@ -33,6 +33,9 @@ char = expr . Char
 oneof :: [Char] -> Regex
 oneof = expr . Set . map Item
 
+noneof :: [Char] -> Regex
+noneof = expr . NSet . map Item
+
 not :: Regex -> Regex
 -- Char -> NSet
 not (Regex [[Many0 (Char c)]])    = Regex [[Many0 $ NSet [Item c]]]
@@ -52,6 +55,10 @@ not x = expr (NegAhead x)
 expr :: Expr -> Regex
 expr x = Regex [[Expr 1 1 x]]
 
+many0 :: Regex -> Regex
+many0 (Regex [[Expr 1 1 x]]) = Regex [[Many0 x]]
+many0 x                      = many1 (group x)
+
 many1 :: Regex -> Regex
 many1 (Regex [[Expr 1 1 x]]) = Regex [[Many1 x]]
 many1 x                      = many1 (group x)
@@ -63,11 +70,16 @@ optional x                      = optional (group x)
 whitespace :: Regex
 whitespace = oneof " \t\r\n"
 
+mor x (Regex []) = x
+mor (Regex []) x = x
+mor (Regex [x]) (Regex [y]) = Regex [x, y]
+mor x y = group x `mor` group y
+
 test = mconcat
     [ char '<'
-    , capture $ many1 $ not $ oneof " />"
-    , optional whitespace
-    , optional $ capture $ many1 $ not $ char '>'
+    , capture $ many1 $ noneof " />"
+    , many0 whitespace
+    , optional $ capture $ many1 $ noneof "="
     ]
 
 ------------------------------------------------------------
@@ -83,7 +95,7 @@ main = do
     matches :: [[String]]
     matches = body =~ pattern
 
-    body = "<html class=yeh><head style='no'><h1 onclick=\"ok\">x</h1></head></html>"
+    body = "<html><head style='no'><h1 onclick=\"ok\">x</h1></head></html>"
     pattern = renderP test
 
     --putStrLn "Random Regex"
