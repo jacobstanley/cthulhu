@@ -22,7 +22,7 @@ data RegexM a
     | Fewest Expr
     | Fewest1 Expr
     | Optional Expr
-    | forall b c. Join (RegexM b) (RegexM c)
+    | forall b c. Append (RegexM b) (RegexM c)
     | forall b c. Choice (RegexM b) (RegexM c)
 
 data Expr
@@ -48,12 +48,12 @@ deriving instance Show Item
 
 instance Monoid Regex where
     mempty  = Empty
-    mappend = (<>)
-    mconcat = join
+    mappend = Append
+    mconcat = foldl' Append Empty
 
 instance Monad RegexM where
     return _ = Empty
-    (>>)     = (<>)
+    (>>)     = Append
     ma >>= f = ma >> f (error "Regex.Types.(>>=): _|_")
 
 ------------------------------------------------------------
@@ -65,14 +65,7 @@ regex = Expr
 expr :: Regex -> Expr
 expr = SubExpr
 
-infixr 0 <>
 infixr 1 <|>
-
-(<>) :: RegexM a -> RegexM b -> RegexM c
-(<>) = Join
-
-join :: [Regex] -> Regex
-join = foldl' (<>) Empty
 
 (<|>) :: Regex -> Regex -> Regex
 (<|>) (Expr (OneOf xs)) (Expr (OneOf ys)) = Expr $ OneOf $ xs ++ ys
@@ -157,13 +150,13 @@ octDigit :: Regex
 octDigit = range '0' '7'
 
 string :: String -> Regex
-string = join . map char
+string = mconcat . map char
 
 ------------------------------------------------------------
 -- Regex DSL - Combinators
 
 between :: Regex -> Regex -> Regex -> Regex
-between open close x = open <> x <> close
+between open close x = open >> x >> close
 
 angles :: Regex -> Regex
 angles = between (char '<') (char '>')
@@ -178,19 +171,19 @@ brackets :: Regex -> Regex
 brackets = between (char '[') (char ']')
 
 lexeme :: Regex -> Regex
-lexeme = (<> spaces)
+lexeme = (>> spaces)
 
 manyTill :: Regex -> Regex -> Regex
-manyTill r end = fewest r <> followedBy end
+manyTill r end = fewest r >> followedBy end
 
 singleQuoted :: Regex
-singleQuoted = char '\'' <> many (noneOf "\'") <> char '\''
+singleQuoted = char '\'' >> many (noneOf "\'") >> char '\''
 
 doubleQuoted :: Regex
-doubleQuoted = char '\"' <> many (noneOf "\"") <> char '\"'
+doubleQuoted = char '\"' >> many (noneOf "\"") >> char '\"'
 
 captureSingles :: Regex
-captureSingles = char '\'' <> capture (many $ noneOf "\'") <> char '\''
+captureSingles = char '\'' >> capture (many $ noneOf "\'") >> char '\''
 
 captureDoubles :: Regex
-captureDoubles = char '\"' <> capture (many $ noneOf "\"") <> char '\"'
+captureDoubles = char '\"' >> capture (many $ noneOf "\"") >> char '\"'

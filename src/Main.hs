@@ -23,16 +23,16 @@ stackoverflow = angles (name >> many attr)
 html = openTag <|> closeTag <|> content
 
 openTag = angles $ do
-        tagName "open"
-        many attribute
-        optional (char '/')
+    tagName "open"
+    many attribute
+    optional (char '/')
 
 closeTag = angles $ char '/' >> tagName "close"
 
 attribute = lexeme $ do
-              tagName "attr"
-              char '='
-              captureSingles <|> captureDoubles
+    tagName "attr"
+    char '='
+    captureSingles <|> captureDoubles
 
 content = named "content" (many $ noneOf "<>")
 

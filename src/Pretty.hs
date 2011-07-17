@@ -4,7 +4,7 @@ import           Data.List (intersperse)
 import           Text.PrettyPrint hiding (render)
 import qualified Text.PrettyPrint as P
 
-import Types hiding (char, brackets, parens, (<>))
+import Types hiding (char, brackets, parens)
 
 ------------------------------------------------------------
 -- Regex Pretty Printing
@@ -19,7 +19,7 @@ instance Pretty (RegexM a) where
     pretty (Fewest x)   = pretty x <> text "*?"
     pretty (Fewest1 x)  = pretty x <> text "+?"
     pretty (Optional x) = pretty x <> char '?'
-    pretty (Join x y)   = pretty x <> pretty y
+    pretty (Append x y) = pretty x <> pretty y
     pretty (Choice x y) = parens (text "?:" <> pretty x <> char '|' <> pretty y)
 
 instance Pretty Expr where
