@@ -13,30 +13,30 @@ import Pretty
 test = stackoverflow
 
 
-stackoverflow = angles (name >> many attr)
+stackoverflow = angles (name +> many attr)
   where
-    name = lexeme $ letter >> many alphaNum
-    attr = lexeme $ name >> optional (char '=' >> (doubleQuoted <|> singleQuoted))
+    name = lexeme $ letter +> many alphaNum
+    attr = lexeme $ name +> optional (char '=' +> (doubleQuoted <|> singleQuoted))
 
 
 
 html = openTag <|> closeTag <|> content
 
-openTag = angles $ do
-    tagName "open"
-    many attribute
-    optional (char '/')
+openTag = angles
+     $  tagName "open"
+     +> many attribute
+     +> optional (char '/')
 
-closeTag = angles $ char '/' >> tagName "close"
+closeTag = angles $ char '/' +> tagName "close"
 
-attribute = lexeme $ do
-    tagName "attr"
-    char '='
-    captureSingles <|> captureDoubles
+attribute = lexeme
+    $  tagName "attr"
+    +> char '='
+    +> captureSingles <|> captureDoubles
 
 content = named "content" (many $ noneOf "<>")
 
-tagName n = lexeme $ named n (letter >> many alphaNum)
+tagName n = lexeme $ named n (letter +> many alphaNum)
 
 ------------------------------------------------------------
 -- Main

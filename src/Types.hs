@@ -4,17 +4,13 @@
 
 module Types where
 
-import Data.Monoid hiding (Any)
-import Data.List (foldl')
+import Data.Reify
 
 ------------------------------------------------------------
 -- Regex Types
 
-type Regex = RegexM ()
-
-data RegexM a
-    = Empty
-    | Start
+data Regex
+    = Start
     | End
     | Expr Expr
     | Many Expr
@@ -22,8 +18,9 @@ data RegexM a
     | Fewest Expr
     | Fewest1 Expr
     | Optional Expr
-    | forall b c. Append (RegexM b) (RegexM c)
-    | forall b c. Choice (RegexM b) (RegexM c)
+    | Append Regex Regex
+    | Choice Regex Regex
+    deriving (Show)
 
 data Expr
     = Any
@@ -36,25 +33,10 @@ data Expr
     | LookAhead Regex
     | NegLookAhead Regex
     | Backref Int
+    deriving (Show)
 
 data Item = Item Char | Range Char Char
-
-deriving instance Show (RegexM a)
-deriving instance Show Expr
-deriving instance Show Item
-
-------------------------------------------------------------
--- Regex DSL - Type Classes
-
-instance Monoid Regex where
-    mempty  = Empty
-    mappend = Append
-    mconcat = foldl' Append Empty
-
-instance Monad RegexM where
-    return _ = Empty
-    (>>)     = Append
-    ma >>= f = ma >> f (error "Regex.Types.(>>=): _|_")
+    deriving (Show)
 
 ------------------------------------------------------------
 -- Regex DSL - Primitives
@@ -65,7 +47,15 @@ regex = Expr
 expr :: Regex -> Expr
 expr = SubExpr
 
+infixr 0 +>
 infixr 1 <|>
+
+(+>) :: Regex -> Regex -> Regex
+(+>) = Append
+
+join :: [Regex] -> Regex
+join [] = error "join: cannot do join on empty list"
+join xs = foldl1 (+>) xs
 
 (<|>) :: Regex -> Regex -> Regex
 (<|>) (Expr (OneOf xs)) (Expr (OneOf ys)) = Expr $ OneOf $ xs ++ ys
@@ -150,13 +140,13 @@ octDigit :: Regex
 octDigit = range '0' '7'
 
 string :: String -> Regex
-string = mconcat . map char
+string = join . map char
 
 ------------------------------------------------------------
 -- Regex DSL - Combinators
 
 between :: Regex -> Regex -> Regex -> Regex
-between open close x = open >> x >> close
+between open close x = open +> x +> close
 
 angles :: Regex -> Regex
 angles = between (char '<') (char '>')
@@ -171,19 +161,19 @@ brackets :: Regex -> Regex
 brackets = between (char '[') (char ']')
 
 lexeme :: Regex -> Regex
-lexeme = (>> spaces)
+lexeme = (+> spaces)
 
 manyTill :: Regex -> Regex -> Regex
-manyTill r end = fewest r >> followedBy end
+manyTill r end = fewest r +> followedBy end
 
 singleQuoted :: Regex
-singleQuoted = char '\'' >> many (noneOf "\'") >> char '\''
+singleQuoted = char '\'' +> many (noneOf "\'") +> char '\''
 
 doubleQuoted :: Regex
-doubleQuoted = char '\"' >> many (noneOf "\"") >> char '\"'
+doubleQuoted = char '\"' +> many (noneOf "\"") +> char '\"'
 
 captureSingles :: Regex
-captureSingles = char '\'' >> capture (many $ noneOf "\'") >> char '\''
+captureSingles = char '\'' +> capture (many $ noneOf "\'") +> char '\''
 
 captureDoubles :: Regex
-captureDoubles = char '\"' >> capture (many $ noneOf "\"") >> char '\"'
+captureDoubles = char '\"' +> capture (many $ noneOf "\"") +> char '\"'

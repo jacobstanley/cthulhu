@@ -9,8 +9,7 @@ import Types hiding (char, brackets, parens)
 ------------------------------------------------------------
 -- Regex Pretty Printing
 
-instance Pretty (RegexM a) where
-    pretty Empty        = empty
+instance Pretty Regex where
     pretty Start        = char '^'
     pretty End          = char '$'
     pretty (Expr x)     = pretty x
