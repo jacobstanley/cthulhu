@@ -1,10 +1,12 @@
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE StandaloneDeriving #-}
 
 module Types where
 
 import Data.Reify
+import Control.Applicative hiding ((<|>), many)
 
 ------------------------------------------------------------
 -- Regex Types
@@ -37,6 +39,61 @@ data Expr
 
 data Item = Item Char | Range Char Char
     deriving (Show)
+
+------------------------------------------------------------
+-- Regex - Observable Sharing
+
+data RegexGraph = RegexGraph [(Unique, RegexNode Unique)] Unique
+
+data RegexNode s
+    = StartN
+    | EndN
+    | ExprN s
+    | ManyN s
+    | Many1N s
+    | FewestN s
+    | Fewest1N s
+    | OptionalN s
+    | AppendN s s
+    | ChoiceN s s
+    ------------------------
+    | AnyN
+    | CharN Char
+    | OneOfN [Item]
+    | NoneOfN [Item]
+    | SubExprN s
+    | CaptureN s
+    | NamedN String s
+    | LookAheadN s
+    | NegLookAheadN s
+    | BackrefN Int
+    deriving (Show)
+
+instance MuRef Regex where
+    type DeRef Regex = RegexNode
+    mapDeRef f Start        = pure StartN
+    mapDeRef f End          = pure EndN
+    mapDeRef f (Expr x)     = ExprN <$> f x
+    mapDeRef f (Many x)     = ManyN <$> f x
+    mapDeRef f (Many1 x)    = Many1N <$> f x
+    mapDeRef f (Fewest x)   = FewestN <$> f x
+    mapDeRef f (Fewest1 x)  = Fewest1N <$> f x
+    mapDeRef f (Optional x) = OptionalN <$> f x
+    mapDeRef f (Append x y) = AppendN <$> f x <*> f y
+    mapDeRef f (Choice x y) = ChoiceN <$> f x <*> f y
+
+instance MuRef Expr where
+    type DeRef Expr = RegexNode
+    mapDeRef f Any              = pure AnyN
+    mapDeRef f (Char x)         = pure $ CharN x
+    mapDeRef f (OneOf xs)       = pure $ OneOfN xs
+    mapDeRef f (NoneOf xs)      = pure $ NoneOfN xs
+    mapDeRef f (SubExpr x)      = SubExprN <$> f x
+    mapDeRef f (Capture x)      = CaptureN <$> f x
+    mapDeRef f (Named n x)      = NamedN n <$> f x
+    mapDeRef f (LookAhead x)    = LookAheadN <$> f x
+    mapDeRef f (NegLookAhead x) = NegLookAheadN <$> f x
+    mapDeRef f (Backref x)      = pure $ BackrefN x
 
 ------------------------------------------------------------
 -- Regex DSL - Primitives

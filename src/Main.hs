@@ -3,6 +3,7 @@
 import Prelude hiding (not, id)
 
 import Data.Monoid
+import Data.Reify
 import Test.QuickCheck hiding (oneof)
 import System.IO.Unsafe (unsafePerformIO)
 import Text.Regex.PCRE hiding (Regex)
@@ -13,7 +14,7 @@ import Pretty
 test = stackoverflow
 
 
-stackoverflow = angles (name +> many attr)
+stackoverflow = angles (name +> many attr) +> stackoverflow
   where
     name = lexeme $ letter +> many alphaNum
     attr = lexeme $ name +> optional (char '=' +> (doubleQuoted <|> singleQuoted))
@@ -43,10 +44,13 @@ tagName n = lexeme $ named n (letter +> many alphaNum)
 
 main :: IO ()
 main = do
-    putStrLn "HTML Regex\n"
-    putStrLn $ pattern ++ "\n" ++ body ++ "\n"
+    g <- reifyGraph test
+    print g
 
-    mapM_ print matches
+    --putStrLn "HTML Regex\n"
+    --putStrLn $ pattern ++ "\n" ++ body ++ "\n"
+
+    --mapM_ print matches
   where
     matches :: [[String]]
     matches = body =~ pattern
